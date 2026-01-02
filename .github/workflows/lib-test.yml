@@ -1,0 +1,31 @@
+on:
+  workflow_call:
+    inputs:
+      short_sha:
+        description: 'Short Git SHA of the current build'
+        required: true
+        type: string
+      git_sha:
+        description: 'Git SHA of the current build'
+        required: true
+        type: string
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: '1.25.4'
+      
+      - name: Install dependencies
+        run: go mod download
+      
+      - name: Run tests
+        run: make test
+        env:
+          SHORT_SHA: ${{ inputs.short_sha }}
+          GIT_SHA: ${{ inputs.git_sha }}
