@@ -1,0 +1,30 @@
+name: 'Merge Main'
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  
+  project-variables:
+    runs-on: ubuntu-latest
+    
+    outputs:
+      short_sha: ${{ steps.project-vars.outputs.short_sha }}
+      git_sha: ${{ steps.project-vars.outputs.git_sha }}
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v6
+      
+      - name: Get Project Variables
+        id: project-vars
+        uses: ./.github/actions/project-vars/
+
+  test:
+    uses: ./.github/workflows/lib-test.yml
+    needs: project-variables
+    with:
+      short_sha: ${{ needs.project-variables.outputs.short_sha }}
+      git_sha: ${{ needs.project-variables.outputs.git_sha }}

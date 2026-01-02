@@ -1,0 +1,4 @@
+mode: set
+github.com/rootservices/auth/auth.go:14.29,18.2 1 1
+github.com/rootservices/auth/auth.go:28.101,34.2 1 1
+github.com/rootservices/auth/auth.go:36.69,38.2 1 1

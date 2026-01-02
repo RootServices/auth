@@ -1,0 +1,8 @@
+displayName: Gateway Authentication
+type: middleware
+
+import: github.com/rootservices/gateway-auth
+
+summary: A Gateway Authentication middleware for Traefik.
+testData:
+  headerName: Test-Header

@@ -1,0 +1,28 @@
+name: set project variables
+
+outputs:
+  short_sha:
+    description: 'short sha'
+    value: ${{ steps.get-short-sha.outputs.short_sha }}
+  git_sha:
+    description: 'git sha'
+    value: ${{ steps.get-sha.outputs.sha }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Get SHA
+      id: get-sha
+      shell: bash
+      run: |
+        if [ "${{ github.event_name }}" == "pull_request" ]; then
+          echo "sha=${{ github.event.pull_request.head.sha }}" >> $GITHUB_OUTPUT
+        else
+          echo "sha=${{ github.sha }}" >> $GITHUB_OUTPUT
+        fi
+
+    - name: Get short SHA
+      id: get-short-sha
+      shell: bash
+      run: |
+        echo "short_sha=$(git rev-parse --short ${{ steps.get-sha.outputs.sha }})" >> $GITHUB_OUTPUT
