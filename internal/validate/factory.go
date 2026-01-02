@@ -1,6 +1,7 @@
 package validate
 
 import (
+	"context"
 	"fmt"
 )
 
@@ -14,17 +15,21 @@ const (
 	FirebaseValidatorType ValidatorType = "firebase"
 )
 
-// NewTokenValidator creates a new TokenValidator based on the provided type.
-// For FirebaseValidatorType, a non-nil firebaseClient is required.
-func NewTokenValidator(validatorType ValidatorType, firebaseClient FirebaseAuthClient) (TokenValidator, error) {
+// newFireBaseAuthClientFunc is a variable to allow mocking in tests.
+var newFireBaseAuthClientFunc = NewFireBaseAuthClient
+
+// TokenValidatorFactory creates a new TokenValidator based on the provided type.
+// For FirebaseValidatorType, it attempts to create a FirebaseAuthClient using the provided context.
+func TokenValidatorFactory(ctx context.Context, validatorType ValidatorType) (TokenValidator, error) {
 	switch validatorType {
 	case GoogleValidatorType:
 		return NewGoogleTokenValidator(), nil
 	case FirebaseValidatorType:
-		if firebaseClient == nil {
-			return nil, fmt.Errorf("firebase client is required for firebase validator")
+		client, err := newFireBaseAuthClientFunc(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create firebase client: %w", err)
 		}
-		return NewFirebaseTokenValidator(firebaseClient), nil
+		return NewFirebaseTokenValidator(client), nil
 	default:
 		return nil, fmt.Errorf("unsupported validator type: %s", validatorType)
 	}

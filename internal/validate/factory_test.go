@@ -15,12 +15,16 @@ func (m *mockFactoryAuthClient) VerifyIDTokenAndCheckRevoked(ctx context.Context
 	return &auth.Token{}, nil
 }
 
-func TestNewTokenValidator(t *testing.T) {
+func TestTokenValidatorFactory(t *testing.T) {
+	// Restore original function after test
+	originalFunc := newFireBaseAuthClientFunc
+	defer func() { newFireBaseAuthClientFunc = originalFunc }()
+
 	tests := []struct {
 		name           string
 		validatorType  ValidatorType
-		firebaseClient FirebaseAuthClient
-		wantType       string // string representation of the expected type
+		mockClientFunc func(ctx context.Context) (FirebaseAuthClient, error)
+		wantType       string
 		expectError    bool
 	}{
 		{
@@ -30,17 +34,21 @@ func TestNewTokenValidator(t *testing.T) {
 			expectError:   false,
 		},
 		{
-			name:           "firebase validator with client",
-			validatorType:  FirebaseValidatorType,
-			firebaseClient: &mockFactoryAuthClient{},
-			wantType:       "*validate.FirebaseTokenValidator",
-			expectError:    false,
+			name:          "firebase validator success",
+			validatorType: FirebaseValidatorType,
+			mockClientFunc: func(ctx context.Context) (FirebaseAuthClient, error) {
+				return &mockFactoryAuthClient{}, nil
+			},
+			wantType:    "*validate.FirebaseTokenValidator",
+			expectError: false,
 		},
 		{
-			name:           "firebase validator missing client",
-			validatorType:  FirebaseValidatorType,
-			firebaseClient: nil,
-			expectError:    true,
+			name:          "firebase validator error",
+			validatorType: FirebaseValidatorType,
+			mockClientFunc: func(ctx context.Context) (FirebaseAuthClient, error) {
+				return nil, fmt.Errorf("init error")
+			},
+			expectError: true,
 		},
 		{
 			name:          "unknown validator",
@@ -51,7 +59,11 @@ func TestNewTokenValidator(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := NewTokenValidator(tt.validatorType, tt.firebaseClient)
+			if tt.mockClientFunc != nil {
+				newFireBaseAuthClientFunc = tt.mockClientFunc
+			}
+
+			got, err := TokenValidatorFactory(context.Background(), tt.validatorType)
 
 			if tt.expectError {
 				assert.Error(t, err)
@@ -61,7 +73,6 @@ func TestNewTokenValidator(t *testing.T) {
 			assert.NoError(t, err)
 			assert.NotNil(t, got)
 
-			// We can check the type using fmt.Sprintf("%T", got)
 			gotType := fmt.Sprintf("%T", got)
 			assert.Equal(t, tt.wantType, gotType)
 		})

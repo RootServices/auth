@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	firebase "firebase.google.com/go/v4"
 	"firebase.google.com/go/v4/auth"
 	"google.golang.org/api/idtoken"
 )
@@ -26,13 +27,26 @@ func NewFirebaseTokenValidator(client FirebaseAuthClient) *FirebaseTokenValidato
 	}
 }
 
+// NewFireBaseAuthClient creates a new FirebaseAuthClient.
+func NewFireBaseAuthClient(ctx context.Context) (FirebaseAuthClient, error) {
+	app, err := firebase.NewApp(ctx, nil)
+	if err != nil {
+		return nil, fmt.Errorf("error initializing firebase app: %w", err)
+	}
+	client, err := app.Auth(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("error getting firebase auth client: %w", err)
+	}
+	return client, nil
+}
+
 // Verify validates the given ID token and checks for revocation.
-func (v *FirebaseTokenValidator) Verify(ctx context.Context, token, audience string) (*idtoken.Payload, error) {
+func (validator *FirebaseTokenValidator) Verify(ctx context.Context, token, audience string) (*idtoken.Payload, error) {
 	if token == "" {
 		return nil, fmt.Errorf("token is empty")
 	}
 
-	authToken, err := v.client.VerifyIDTokenAndCheckRevoked(ctx, token)
+	authToken, err := validator.client.VerifyIDTokenAndCheckRevoked(ctx, token)
 	if err != nil {
 		return nil, fmt.Errorf("failed to verify token: %w", err)
 	}
