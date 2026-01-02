@@ -2,86 +2,177 @@ package auth
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"google.golang.org/api/idtoken"
 )
 
-func TestNoOp(t *testing.T) {
-	cfg := CreateConfig()
-	cfg.HeaderName = "foo"
-
-	ctx := context.Background()
-	next := http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {})
-
-	handler, err := New(ctx, next, cfg, "demo-plugin")
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	recorder := httptest.NewRecorder()
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://localhost", nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	handler.ServeHTTP(recorder, req)
+// MockValidator to test ServeHTTP without relying on external services
+type MockValidator struct {
+	VerifyFunc func(ctx context.Context, token, audience string) (*idtoken.Payload, error)
 }
 
-func TestServeHTTP_TableDriven(t *testing.T) {
+func (m *MockValidator) Verify(ctx context.Context, token, audience string) (*idtoken.Payload, error) {
+	if m.VerifyFunc != nil {
+		return m.VerifyFunc(ctx, token, audience)
+	}
+	return nil, nil
+}
+
+func TestAuth_ServeHTTP(t *testing.T) {
 	tests := []struct {
-		desc         string
-		config       *Config
-		expectedCode int
-		expectedBody string
+		name           string
+		headerName     string
+		tokenHeader    string
+		required       bool
+		mockVerify     func(ctx context.Context, token, audience string) (*idtoken.Payload, error)
+		expectedStatus int
 	}{
 		{
-			desc: "default config",
-			config: &Config{
-				HeaderName: "default-header",
+			name:        "valid token",
+			headerName:  "X-Auth-Token",
+			tokenHeader: "valid-token",
+			required:    true,
+			mockVerify: func(ctx context.Context, token, audience string) (*idtoken.Payload, error) {
+				return &idtoken.Payload{Subject: "user1"}, nil
 			},
-			expectedCode: http.StatusOK,
-			expectedBody: "OK",
+			expectedStatus: http.StatusOK,
 		},
 		{
-			desc: "empty header config",
-			config: &Config{
-				HeaderName: "",
+			name:        "valid token with bearer prefix",
+			headerName:  "Authorization",
+			tokenHeader: "Bearer valid-token",
+			required:    true,
+			mockVerify: func(ctx context.Context, token, audience string) (*idtoken.Payload, error) {
+				assert.Equal(t, "valid-token", token)
+				return &idtoken.Payload{Subject: "user1"}, nil
 			},
-			expectedCode: http.StatusOK,
-			expectedBody: "OK",
+			expectedStatus: http.StatusOK,
+		},
+		{
+			name:        "missing token",
+			headerName:  "X-Auth-Token",
+			tokenHeader: "",
+			required:    true,
+			mockVerify: func(ctx context.Context, token, audience string) (*idtoken.Payload, error) {
+				return nil, nil // Should not be called
+			},
+			expectedStatus: http.StatusUnauthorized,
+		},
+		{
+			name:        "invalid token",
+			headerName:  "X-Auth-Token",
+			tokenHeader: "invalid-token",
+			required:    true,
+			mockVerify: func(ctx context.Context, token, audience string) (*idtoken.Payload, error) {
+				return nil, fmt.Errorf("invalid token")
+			},
+			expectedStatus: http.StatusUnauthorized,
+		},
+		{
+			name:        "missing token but not required",
+			headerName:  "X-Auth-Token",
+			tokenHeader: "",
+			required:    false,
+			mockVerify: func(ctx context.Context, token, audience string) (*idtoken.Payload, error) {
+				return nil, nil // Should not be called
+			},
+			expectedStatus: http.StatusOK,
+		},
+		{
+			name:        "invalid token but not required",
+			headerName:  "X-Auth-Token",
+			tokenHeader: "invalid-token",
+			required:    false,
+			mockVerify: func(ctx context.Context, token, audience string) (*idtoken.Payload, error) {
+				return nil, fmt.Errorf("invalid token")
+			},
+			expectedStatus: http.StatusOK,
 		},
 	}
 
-	for _, test := range tests {
-		t.Run(test.desc, func(t *testing.T) {
-			ctx := context.Background()
-			// Mock 'next' handler that writes a predictable response
-			next := http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
-				rw.WriteHeader(test.expectedCode)
-				_, _ = rw.Write([]byte(test.expectedBody))
-			})
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Create a mock validator
+			validator := &MockValidator{VerifyFunc: tt.mockVerify}
 
-			handler, err := New(ctx, next, test.config, "test-plugin")
-			if err != nil {
-				t.Fatalf("failed to create plugin: %v", err)
+			// Create the Auth handler manually with the mock validator
+			authPlugin := &Auth{
+				next: http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
+					rw.WriteHeader(http.StatusOK)
+				}),
+				headerName: tt.headerName,
+				required:   tt.required,
+				validator:  validator,
 			}
 
 			recorder := httptest.NewRecorder()
-			req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://localhost", nil)
-			if err != nil {
-				t.Fatalf("failed to create request: %v", err)
+			req := httptest.NewRequest(http.MethodGet, "/", nil)
+			if tt.tokenHeader != "" {
+				req.Header.Set(tt.headerName, tt.tokenHeader)
 			}
 
-			handler.ServeHTTP(recorder, req)
+			authPlugin.ServeHTTP(recorder, req)
 
-			if recorder.Code != test.expectedCode {
-				t.Errorf("expected status code %d, got %d", test.expectedCode, recorder.Code)
-			}
+			assert.Equal(t, tt.expectedStatus, recorder.Code)
+		})
+	}
+}
 
-			if recorder.Body.String() != test.expectedBody {
-				t.Errorf("expected body %q, got %q", test.expectedBody, recorder.Body.String())
+// TestNew verifies the New function logic (factory integration)
+// This is harder to test fully without mocking the factory or having credentials.
+// We can test the error cases or the Google case if it doesn't strictly checking creds on creation (it might not).
+// validate.NewGoogleTokenValidator() just returns a struct, it doesn't call external services yet.
+func TestNew(t *testing.T) {
+	ctx := context.Background()
+	next := http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {})
+
+	tests := []struct {
+		name        string
+		config      *Config
+		expectError bool
+	}{
+		{
+			name: "google provider",
+			config: &Config{
+				HeaderName: "Authorization",
+				Provider:   "google",
+				Audience:   "gateway-audience",
+			},
+			expectError: false,
+		},
+		{
+			name: "Audience is missing",
+			config: &Config{
+				HeaderName: "Authorization",
+				Provider:   "google",
+			},
+			expectError: true,
+		},
+		{
+			name: "unknown provider",
+			config: &Config{
+				HeaderName: "Authorization",
+				Provider:   "unknown",
+				Audience:   "gateway-audience",
+			},
+			expectError: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			handler, err := New(ctx, next, tt.config, "test")
+			if tt.expectError {
+				assert.Error(t, err)
+				assert.Nil(t, handler)
+			} else {
+				assert.NoError(t, err)
+				assert.NotNil(t, handler)
 			}
 		})
 	}
