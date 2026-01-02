@@ -4,6 +4,16 @@ A Traefik Plugin that verifies JWTs from Google Cloud Identity Platform includin
 ## About
 Follows the Traefik plugin [docs](https://plugins.traefik.io/create) and example [repository](https://github.com/traefik/plugindemo).
 
+## Configuration
+
+| Field             | Type   | Description                                                                 | Default |
+| ----------------- | ------ | --------------------------------------------------------------------------- | ------- |
+| `headerName`      | string | The name of the header to look for the token.                               | `""`    |
+| `provider`        | string | The authentication provider. Allowed values: `google`, `firebase`.          | `""`    |
+| `audience`        | string | The expected audience (aud) claim in the token.                             | `""`    |
+| `forwardHeaderName`| string | The header name to use when forwarding the validated token to the backend.  | `"X-Forward-IdToken"`    |
+| `required`        | bool   | If `true`, the request will be rejected if the token is missing or invalid. | `false` |
+
 
 ## Contributing
 

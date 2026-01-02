@@ -9,7 +9,9 @@ import (
 	"github.com/rootservices/auth/internal/validate"
 )
 
-const defaultForwardHeaderName = "X-Forward-IdToken"
+const (
+	defaultForwardHeaderName = "X-Forward-IdToken"
+)
 
 // Config the plugin configuration.
 type Config struct {
