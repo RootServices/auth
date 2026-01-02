@@ -1,0 +1,4 @@
+
+/bin
+**/version.json
+coverage*.out
