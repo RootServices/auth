@@ -2,6 +2,9 @@
 PROJECT_ID?="barncat"
 SHORT_SHA?=`git rev-parse --short HEAD`
 
+vendor:
+	go mod tidy && go mod vendor
+
 version:
 	echo "{" > internal/version/version.json
 	echo "  \"build\": \"$(SHORT_SHA)\"," >> internal/version/version.json
