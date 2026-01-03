@@ -11,6 +11,7 @@ import (
 
 const (
 	defaultForwardHeaderName = "X-Forward-IdToken"
+	defaultRequired          = true
 )
 
 // Config the plugin configuration.
@@ -19,10 +20,10 @@ type Config struct {
 	Provider          string `json:"provider,omitempty"` // google, firebase
 	Audience          string `json:"audience,omitempty"`
 	ForwardHeaderName string `json:"forwardHeaderName,omitempty"`
-	Required          bool   `json:"required,omitempty"`
+	Required          *bool  `json:"required,omitempty"`
 }
 
-type Auth struct {
+type AuthPlugin struct {
 	next              http.Handler
 	headerName        string
 	name              string
@@ -32,8 +33,12 @@ type Auth struct {
 	required          bool
 }
 
-// New created a new Auth plugin.
 func New(ctx context.Context, next http.Handler, config *Config, name string) (http.Handler, error) {
+	return NewAuthPlugin(ctx, next, config, name)
+}
+
+// New created a new Auth plugin.
+func NewAuthPlugin(ctx context.Context, next http.Handler, config *Config, name string) (*AuthPlugin, error) {
 	if config.Audience == "" {
 		return nil, fmt.Errorf("audience is required")
 	}
@@ -47,19 +52,23 @@ func New(ctx context.Context, next http.Handler, config *Config, name string) (h
 	if forwardHeaderName == "" {
 		forwardHeaderName = defaultForwardHeaderName
 	}
+	required := defaultRequired
+	if config.Required != nil {
+		required = *config.Required
+	}
 
-	return &Auth{
+	return &AuthPlugin{
 		headerName:        config.HeaderName,
 		next:              next,
 		name:              name,
 		validator:         validator,
 		audience:          config.Audience,
-		forwardHeaderName: config.ForwardHeaderName,
-		required:          config.Required,
+		forwardHeaderName: forwardHeaderName,
+		required:          required,
 	}, nil
 }
 
-func (auth *Auth) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
+func (auth *AuthPlugin) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	token := req.Header.Get(auth.headerName)
 	if token == "" && auth.required {
 		http.Error(rw, "Unauthorized", http.StatusUnauthorized)

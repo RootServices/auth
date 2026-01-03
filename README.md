@@ -12,7 +12,7 @@ Follows the Traefik plugin [docs](https://plugins.traefik.io/create) and example
 | `provider`        | string | The authentication provider. Allowed values: `google`, `firebase`.          | `""`    |
 | `audience`        | string | The expected audience (aud) claim in the token.                             | `""`    |
 | `forwardHeaderName`| string | The header name to use when forwarding the validated token to the backend.  | `"X-Forward-IdToken"`    |
-| `required`        | bool   | If `true`, the request will be rejected if the token is missing or invalid. | `false` |
+| `required`        | bool   | If `true`, the request will be rejected if the token is missing or invalid. | `true` |
 
 
 ## Contributing

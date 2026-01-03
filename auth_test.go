@@ -11,6 +11,10 @@ import (
 	"google.golang.org/api/idtoken"
 )
 
+func boolPtr(b bool) *bool {
+	return &b
+}
+
 // MockValidator to test ServeHTTP without relying on external services
 type MockValidator struct {
 	VerifyFunc func(ctx context.Context, token, audience string) (*idtoken.Payload, error)
@@ -101,13 +105,13 @@ func TestAuth_ServeHTTP(t *testing.T) {
 			validator := &MockValidator{VerifyFunc: tt.mockVerify}
 
 			// Create the Auth handler manually with the mock validator
-			authPlugin := &Auth{
+			authPlugin := &AuthPlugin{
 				next: http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
 					rw.WriteHeader(http.StatusOK)
 				}),
 				headerName: tt.headerName,
-				required:   tt.required,
 				validator:  validator,
+				required:   tt.required,
 			}
 
 			recorder := httptest.NewRecorder()
@@ -123,10 +127,7 @@ func TestAuth_ServeHTTP(t *testing.T) {
 	}
 }
 
-// TestNew verifies the New function logic (factory integration)
-// This is harder to test fully without mocking the factory or having credentials.
-// We can test the error cases or the Google case if it doesn't strictly checking creds on creation (it might not).
-// validate.NewGoogleTokenValidator() just returns a struct, it doesn't call external services yet.
+// These blocks allow looking into defaults because the subject returned is a http.Handler.
 func TestNew(t *testing.T) {
 	ctx := context.Background()
 	next := http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {})
@@ -173,6 +174,77 @@ func TestNew(t *testing.T) {
 			} else {
 				assert.NoError(t, err)
 				assert.NotNil(t, handler)
+			}
+		})
+	}
+}
+
+// These allow looking into defaults because the subject returned is a AuthPlugin.
+func TestNewAuthPlugin(t *testing.T) {
+	ctx := context.Background()
+	next := http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {})
+
+	tests := []struct {
+		name                      string
+		config                    *Config
+		expectedForwardHeaderName string
+		expectedRequired          bool
+		expectError               bool
+	}{
+		{
+			name: "google provider should use default values",
+			config: &Config{
+				HeaderName: "Authorization",
+				Provider:   "google",
+				Audience:   "gateway-audience",
+			},
+			expectedForwardHeaderName: defaultForwardHeaderName,
+			expectedRequired:          defaultRequired,
+			expectError:               false,
+		},
+		{
+			name: "google provider should assign forward header name and required",
+			config: &Config{
+				HeaderName:        "Authorization",
+				Provider:          "google",
+				Audience:          "gateway-audience",
+				ForwardHeaderName: "X-Forward-IdToken-Test",
+				Required:          boolPtr(false),
+			},
+			expectedForwardHeaderName: "X-Forward-IdToken-Test",
+			expectedRequired:          false,
+			expectError:               false,
+		},
+		{
+			name: "Audience is missing",
+			config: &Config{
+				HeaderName: "Authorization",
+				Provider:   "google",
+			},
+			expectError: true,
+		},
+		{
+			name: "unknown provider",
+			config: &Config{
+				HeaderName: "Authorization",
+				Provider:   "unknown",
+				Audience:   "gateway-audience",
+			},
+			expectError: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			subject, err := NewAuthPlugin(ctx, next, tt.config, "test")
+			if tt.expectError {
+				assert.Error(t, err)
+				assert.Nil(t, subject)
+			} else {
+				assert.NoError(t, err)
+				assert.NotNil(t, subject)
+				assert.Equal(t, tt.expectedForwardHeaderName, subject.forwardHeaderName)
+				assert.Equal(t, tt.expectedRequired, subject.required)
 			}
 		})
 	}
