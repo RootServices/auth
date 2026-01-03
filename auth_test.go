@@ -125,7 +125,10 @@ func TestAuth_ServeHTTP(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			subject, err := NewAuthPlugin(context.Background(), nil, tt.config, "test")
+			next := http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
+				rw.WriteHeader(http.StatusOK)
+			})
+			subject, err := NewAuthPlugin(context.Background(), next, tt.config, "test")
 			if err != nil {
 				t.Fatal(err)
 			}
