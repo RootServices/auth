@@ -5,6 +5,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/rootservices/auth/internal/logger"
 	"github.com/stretchr/testify/assert"
 	"google.golang.org/api/idtoken"
 )
@@ -62,8 +63,10 @@ func TestGoogleTokenValidator_Verify(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			logger := logger.New("INFO", "")
 			v := &GoogleTokenValidator{
 				validatorFunc: tt.mockValidate,
+				logger:        logger,
 			}
 
 			payload, err := v.Verify(context.Background(), tt.token, tt.audience)

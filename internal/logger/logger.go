@@ -1,13 +1,13 @@
 package logger
 
-// Package logger implements utility routines to write to stdout and stderr.
-// It supports trace, debug, info and error level
-//
 // Source: https://github.com/maxlerebourg/crowdsec-bouncer-traefik-plugin/blob/main/pkg/logger/logger.go
 // Date: Jan 03, 2026
 // Author: Max Lerebourg
 // Commit: 892909b9b8bd6da9eb91a990aa0dd46bd1e467ba
 // License: Apache 2.0
+
+// Package logger implements utility routines to write to stdout and stderr.
+// It supports trace, debug, info and error level
 
 import (
 	"fmt"

@@ -6,6 +6,7 @@ import (
 
 	firebase "firebase.google.com/go/v4"
 	"firebase.google.com/go/v4/auth"
+	"github.com/rootservices/auth/internal/logger"
 	"google.golang.org/api/idtoken"
 )
 
@@ -18,12 +19,14 @@ type FirebaseAuthClient interface {
 // FirebaseTokenValidator implements TokenValidator using Firebase Auth.
 type FirebaseTokenValidator struct {
 	client FirebaseAuthClient
+	logger *logger.Log
 }
 
 // NewFirebaseTokenValidator creates a new FirebaseTokenValidator.
-func NewFirebaseTokenValidator(client FirebaseAuthClient) *FirebaseTokenValidator {
+func NewFirebaseTokenValidator(client FirebaseAuthClient, logger *logger.Log) *FirebaseTokenValidator {
 	return &FirebaseTokenValidator{
 		client: client,
+		logger: logger,
 	}
 }
 
@@ -47,12 +50,6 @@ func (validator *FirebaseTokenValidator) Verify(ctx context.Context, token, audi
 	if err != nil {
 		return nil, fmt.Errorf("failed to verify token: %w", err)
 	}
-
-	// Map auth.Token to idtoken.Payload
-	// specific claims need to be manually mapped since auth.Token has Claims map[string]interface{}
-	// But idtoken.Payload is a struct.
-	// We can manually populate the fields we care about or marshal/unmarshal.
-	// For now, let's map the standard claims available in auth.Token.
 
 	payload := &idtoken.Payload{
 		Issuer:   authToken.Issuer,

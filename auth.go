@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/rootservices/auth/internal/logger"
 	"github.com/rootservices/auth/internal/validate"
 )
 
@@ -31,6 +32,7 @@ type AuthPlugin struct {
 	audience          string
 	forwardHeaderName string
 	required          bool
+	logger            *logger.Log
 }
 
 func New(ctx context.Context, next http.Handler, config *Config, name string) (http.Handler, error) {
@@ -39,12 +41,16 @@ func New(ctx context.Context, next http.Handler, config *Config, name string) (h
 
 // New created a new Auth plugin.
 func NewAuthPlugin(ctx context.Context, next http.Handler, config *Config, name string) (*AuthPlugin, error) {
+	logger := logger.New("INFO", "")
+
 	if config.Audience == "" {
+		logger.Error("audience is required")
 		return nil, fmt.Errorf("audience is required")
 	}
 
-	validator, err := validate.TokenValidatorFactory(ctx, validate.ValidatorType(config.Provider))
+	validator, err := validate.TokenValidatorFactory(ctx, validate.ValidatorType(config.Provider), logger)
 	if err != nil {
+		logger.Error(fmt.Sprintf("failed to create validator: %s", err))
 		return nil, fmt.Errorf("failed to create validator: %w", err)
 	}
 
@@ -65,15 +71,18 @@ func NewAuthPlugin(ctx context.Context, next http.Handler, config *Config, name 
 		audience:          config.Audience,
 		forwardHeaderName: forwardHeaderName,
 		required:          required,
+		logger:            logger,
 	}, nil
 }
 
 func (auth *AuthPlugin) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	token := req.Header.Get(auth.headerName)
 	if token == "" && auth.required {
+		auth.logger.Error("token is required")
 		http.Error(rw, "Unauthorized", http.StatusUnauthorized)
 		return
 	} else if token == "" && !auth.required {
+		auth.logger.Debug("token is empty but not required")
 		auth.next.ServeHTTP(rw, req)
 		return
 	}
@@ -87,6 +96,7 @@ func (auth *AuthPlugin) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 		http.Error(rw, "Unauthorized", http.StatusUnauthorized)
 		return
 	} else if err != nil && !auth.required {
+		auth.logger.Debug("token is invalid but not required")
 		auth.next.ServeHTTP(rw, req)
 		return
 	}

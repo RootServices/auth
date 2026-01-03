@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"firebase.google.com/go/v4/auth"
+	"github.com/rootservices/auth/internal/logger"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -63,7 +64,8 @@ func TestTokenValidatorFactory(t *testing.T) {
 				newFireBaseAuthClientFunc = tt.mockClientFunc
 			}
 
-			got, err := TokenValidatorFactory(context.Background(), tt.validatorType)
+			logger := logger.New("INFO", "")
+			got, err := TokenValidatorFactory(context.Background(), tt.validatorType, logger)
 
 			if tt.expectError {
 				assert.Error(t, err)
