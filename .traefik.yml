@@ -5,4 +5,6 @@ import: github.com/rootservices/gateway-auth
 
 summary: A Gateway Authentication middleware for Traefik.
 testData:
-  headerName: Test-Header
+  HeaderName: Test-Header
+  Provider: google
+  Audience: required-audience
