@@ -25,4 +25,4 @@ Please feel free to Fork then Submit a Pull Request.
 - Firebase Auth [Go Lang Package](https://pkg.go.dev/firebase.google.com/go/v4/auth)
 - Traefik Plugin Create [docs](https://plugins.traefik.io/create)
 - Traefik Example Plugin [repository](https://github.com/traefik/plugindemo)
-- Traefik Plugin Logging https://github.com/maxlerebourg/crowdsec-bouncer-traefik-plugin/blob/main/pkg/logger/logger.go
+- Logging was sourced from crowdsec-bouncer-traefik-plugin [repository](https://github.com/maxlerebourg/crowdsec-bouncer-traefik-plugin/blob/main/pkg/logger/logger.go
