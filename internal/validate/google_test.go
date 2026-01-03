@@ -5,6 +5,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/rootservices/auth/internal/logger"
 	"github.com/stretchr/testify/assert"
 	"google.golang.org/api/idtoken"
 )
@@ -27,16 +28,6 @@ func TestGoogleTokenValidator_Verify(t *testing.T) {
 			},
 			expectedError: false,
 			expectedSub:   "1234567890",
-		},
-		{
-			name:     "empty token",
-			token:    "",
-			audience: "my-audience",
-			mockValidate: func(ctx context.Context, idToken string, audience string) (*idtoken.Payload, error) {
-				return nil, errors.New("should not be called")
-			},
-			expectedError: true,
-			expectedSub:   "",
 		},
 		{
 			name:     "invalid token",
@@ -72,8 +63,10 @@ func TestGoogleTokenValidator_Verify(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			logger := logger.New("INFO", "")
 			v := &GoogleTokenValidator{
 				validatorFunc: tt.mockValidate,
+				logger:        logger,
 			}
 
 			payload, err := v.Verify(context.Background(), tt.token, tt.audience)

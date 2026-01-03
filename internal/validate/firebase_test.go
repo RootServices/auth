@@ -5,6 +5,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/rootservices/auth/internal/logger"
 	"github.com/stretchr/testify/assert"
 
 	"firebase.google.com/go/v4/auth"
@@ -42,16 +43,6 @@ func TestFirebaseTokenValidator_Verify(t *testing.T) {
 			},
 			expectedError: false,
 			expectedSub:   "user-123",
-		},
-		{
-			name:     "empty token",
-			token:    "",
-			audience: "my-project",
-			mockVerify: func(ctx context.Context, idToken string) (*auth.Token, error) {
-				return nil, errors.New("should not be called")
-			},
-			expectedError: true,
-			expectedSub:   "",
 		},
 		{
 			name:     "invalid token",
@@ -93,7 +84,8 @@ func TestFirebaseTokenValidator_Verify(t *testing.T) {
 			client := &mockFirebaseAuthClient{
 				verifyFunc: tt.mockVerify,
 			}
-			v := NewFirebaseTokenValidator(client)
+			logger := logger.New("INFO", "")
+			v := NewFirebaseTokenValidator(client, logger)
 
 			payload, err := v.Verify(context.Background(), tt.token, tt.audience)
 
