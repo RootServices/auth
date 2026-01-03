@@ -22,9 +22,6 @@ func NewGoogleTokenValidator() *GoogleTokenValidator {
 
 // Verify validates the given ID token.
 func (validator *GoogleTokenValidator) Verify(ctx context.Context, token, audience string) (*idtoken.Payload, error) {
-	if token == "" {
-		return nil, fmt.Errorf("token is empty")
-	}
 	payload, err := validator.validatorFunc(ctx, token, audience)
 	if err != nil {
 		return nil, fmt.Errorf("failed to validate token: %w", err)

@@ -42,9 +42,6 @@ func NewFireBaseAuthClient(ctx context.Context) (FirebaseAuthClient, error) {
 
 // Verify validates the given ID token and checks for revocation.
 func (validator *FirebaseTokenValidator) Verify(ctx context.Context, token, audience string) (*idtoken.Payload, error) {
-	if token == "" {
-		return nil, fmt.Errorf("token is empty")
-	}
 
 	authToken, err := validator.client.VerifyIDTokenAndCheckRevoked(ctx, token)
 	if err != nil {
@@ -66,11 +63,7 @@ func (validator *FirebaseTokenValidator) Verify(ctx context.Context, token, audi
 		Claims:   authToken.Claims,
 	}
 
-	// Also check audience if required, though VerifyIDToken might check it if configured?
-	// The idtoken.Validate usually checks audience. VerifyIDToken checks audience if it's set in the client?
-	// Actually Firebase VerifyIDToken validates audience matches the project ID.
-	// If the user passed a specific audience to Verify(), we should check it.
-	if audience != "" && authToken.Audience != audience {
+	if authToken.Audience != audience {
 		return nil, fmt.Errorf("audience mismatch: expected %q, got %q", audience, authToken.Audience)
 	}
 

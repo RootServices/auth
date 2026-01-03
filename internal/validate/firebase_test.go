@@ -44,16 +44,6 @@ func TestFirebaseTokenValidator_Verify(t *testing.T) {
 			expectedSub:   "user-123",
 		},
 		{
-			name:     "empty token",
-			token:    "",
-			audience: "my-project",
-			mockVerify: func(ctx context.Context, idToken string) (*auth.Token, error) {
-				return nil, errors.New("should not be called")
-			},
-			expectedError: true,
-			expectedSub:   "",
-		},
-		{
 			name:     "invalid token",
 			token:    "invalid-token",
 			audience: "my-project",
