@@ -30,27 +30,35 @@ func (m *MockValidator) Verify(ctx context.Context, token, audience string) (*id
 func TestAuth_ServeHTTP(t *testing.T) {
 	tests := []struct {
 		name           string
-		headerName     string
-		tokenHeader    string
+		config         *Config
+		token          string
 		required       bool
 		mockVerify     func(ctx context.Context, token, audience string) (*idtoken.Payload, error)
 		expectedStatus int
 	}{
 		{
-			name:        "valid token",
-			headerName:  "X-Auth-Token",
-			tokenHeader: "valid-token",
-			required:    true,
+			name: "valid token",
+			config: &Config{
+				HeaderName: "X-Auth-Token",
+				Provider:   "google",
+				Audience:   "gateway-audience",
+				Required:   boolPtr(true),
+			},
+			token: "valid-token",
 			mockVerify: func(ctx context.Context, token, audience string) (*idtoken.Payload, error) {
 				return &idtoken.Payload{Subject: "user1"}, nil
 			},
 			expectedStatus: http.StatusOK,
 		},
 		{
-			name:        "valid token with bearer prefix",
-			headerName:  "Authorization",
-			tokenHeader: "Bearer valid-token",
-			required:    true,
+			name: "valid token with bearer prefix",
+			config: &Config{
+				HeaderName: "Authorization",
+				Provider:   "google",
+				Audience:   "gateway-audience",
+				Required:   boolPtr(true),
+			},
+			token: "Bearer valid-token",
 			mockVerify: func(ctx context.Context, token, audience string) (*idtoken.Payload, error) {
 				assert.Equal(t, "valid-token", token)
 				return &idtoken.Payload{Subject: "user1"}, nil
@@ -58,40 +66,56 @@ func TestAuth_ServeHTTP(t *testing.T) {
 			expectedStatus: http.StatusOK,
 		},
 		{
-			name:        "missing token",
-			headerName:  "X-Auth-Token",
-			tokenHeader: "",
-			required:    true,
+			name: "missing token",
+			config: &Config{
+				HeaderName: "X-Auth-Token",
+				Provider:   "google",
+				Audience:   "gateway-audience",
+				Required:   boolPtr(true),
+			},
+			token: "",
 			mockVerify: func(ctx context.Context, token, audience string) (*idtoken.Payload, error) {
 				return nil, nil // Should not be called
 			},
 			expectedStatus: http.StatusUnauthorized,
 		},
 		{
-			name:        "invalid token",
-			headerName:  "X-Auth-Token",
-			tokenHeader: "invalid-token",
-			required:    true,
+			name: "invalid token",
+			config: &Config{
+				HeaderName: "X-Auth-Token",
+				Provider:   "google",
+				Audience:   "gateway-audience",
+				Required:   boolPtr(true),
+			},
+			token: "invalid-token",
 			mockVerify: func(ctx context.Context, token, audience string) (*idtoken.Payload, error) {
 				return nil, fmt.Errorf("invalid token")
 			},
 			expectedStatus: http.StatusUnauthorized,
 		},
 		{
-			name:        "missing token but not required",
-			headerName:  "X-Auth-Token",
-			tokenHeader: "",
-			required:    false,
+			name: "missing token but not required",
+			config: &Config{
+				HeaderName: "X-Auth-Token",
+				Provider:   "google",
+				Audience:   "gateway-audience",
+				Required:   boolPtr(false),
+			},
+			token: "",
 			mockVerify: func(ctx context.Context, token, audience string) (*idtoken.Payload, error) {
 				return nil, nil // Should not be called
 			},
 			expectedStatus: http.StatusOK,
 		},
 		{
-			name:        "invalid token but not required",
-			headerName:  "X-Auth-Token",
-			tokenHeader: "invalid-token",
-			required:    false,
+			name: "invalid token but not required",
+			config: &Config{
+				HeaderName: "X-Auth-Token",
+				Provider:   "google",
+				Audience:   "gateway-audience",
+				Required:   boolPtr(false),
+			},
+			token: "invalid-token",
 			mockVerify: func(ctx context.Context, token, audience string) (*idtoken.Payload, error) {
 				return nil, fmt.Errorf("invalid token")
 			},
@@ -101,33 +125,28 @@ func TestAuth_ServeHTTP(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Create a mock validator
-			validator := &MockValidator{VerifyFunc: tt.mockVerify}
-
-			// Create the Auth handler manually with the mock validator
-			authPlugin := &AuthPlugin{
-				next: http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
-					rw.WriteHeader(http.StatusOK)
-				}),
-				headerName: tt.headerName,
-				validator:  validator,
-				required:   tt.required,
+			subject, err := NewAuthPlugin(context.Background(), nil, tt.config, "test")
+			if err != nil {
+				t.Fatal(err)
 			}
+
+			subject.validator = &MockValidator{VerifyFunc: tt.mockVerify}
 
 			recorder := httptest.NewRecorder()
 			req := httptest.NewRequest(http.MethodGet, "/", nil)
-			if tt.tokenHeader != "" {
-				req.Header.Set(tt.headerName, tt.tokenHeader)
+			if tt.token != "" {
+				req.Header.Set(tt.config.HeaderName, tt.token)
 			}
 
-			authPlugin.ServeHTTP(recorder, req)
+			subject.ServeHTTP(recorder, req)
 
 			assert.Equal(t, tt.expectedStatus, recorder.Code)
 		})
 	}
 }
 
-// These blocks allow looking into defaults because the subject returned is a http.Handler.
+// These tests dont allow looking into defaults of AuthPlugin because the
+// subject returned is a http.Handler.
 func TestNew(t *testing.T) {
 	ctx := context.Background()
 	next := http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {})
@@ -179,7 +198,8 @@ func TestNew(t *testing.T) {
 	}
 }
 
-// These allow looking into defaults because the subject returned is a AuthPlugin.
+// These tests allow looking into defaults of AuthPlugin because the
+// subject returned is a AuthPlugin.
 func TestNewAuthPlugin(t *testing.T) {
 	ctx := context.Background()
 	next := http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {})
