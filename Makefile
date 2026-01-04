@@ -1,4 +1,4 @@
-.PHONY: clean run test build version
+.PHONY: clean run test test-yaegi build version
 PROJECT_ID?="barncat"
 SHORT_SHA?=`git rev-parse --short HEAD`
 
@@ -19,7 +19,7 @@ test: version
 build: version
 	go build ./...
 
-yaegi-test:
+test-yaegi: version
 	go install github.com/traefik/yaegi/cmd/yaegi@latest
 	mkdir -p .tmp/src/github.com/rootservices
 	ln -sf $(CURDIR) .tmp/src/github.com/rootservices/auth

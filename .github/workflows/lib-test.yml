@@ -29,3 +29,9 @@ jobs:
         env:
           SHORT_SHA: ${{ inputs.short_sha }}
           GIT_SHA: ${{ inputs.git_sha }}
+
+      - name: Run tests with Yaegi
+	run: make test-yaegi
+	env:
+	  SHORT_SHA: ${{ inputs.short_sha }}
+          GIT_SHA: ${{ inputs.git_sha }}
