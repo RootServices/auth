@@ -1,4 +1,4 @@
-package auth
+package plugin
 
 import (
 	"context"
@@ -15,13 +15,12 @@ const (
 	defaultRequired          = true
 )
 
-// Config the plugin configuration.
-type Config struct {
-	HeaderName        string `json:"headerName,omitempty"`
-	Provider          string `json:"provider,omitempty"` // google, firebase
-	Audience          string `json:"audience,omitempty"`
-	ForwardHeaderName string `json:"forwardHeaderName,omitempty"`
-	Required          *bool  `json:"required,omitempty"`
+type PluginInput struct {
+	HeaderName        string
+	Provider          string
+	Audience          string
+	ForwardHeaderName string
+	Required          *bool
 }
 
 type AuthPlugin struct {
@@ -35,16 +34,8 @@ type AuthPlugin struct {
 	logger            *logger.Log
 }
 
-func New(ctx context.Context, next http.Handler, config *Config, name string) (http.Handler, error) {
-	plugin, err := NewAuthPlugin(ctx, next, config, name)
-	if err != nil {
-		return nil, err
-	}
-	return plugin, nil
-}
-
-// New created a new Auth plugin.
-func NewAuthPlugin(ctx context.Context, next http.Handler, config *Config, name string) (*AuthPlugin, error) {
+// NewAuthPlugin created a new Auth plugin.
+func NewAuthPlugin(ctx context.Context, next http.Handler, config *PluginInput, name string) (*AuthPlugin, error) {
 	logger := logger.New("INFO", "")
 
 	if config.Audience == "" {

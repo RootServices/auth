@@ -1,4 +1,4 @@
-package auth
+package plugin
 
 import (
 	"context"
@@ -30,7 +30,7 @@ func (m *MockValidator) Verify(ctx context.Context, token, audience string) (*id
 func TestAuth_ServeHTTP(t *testing.T) {
 	tests := []struct {
 		name           string
-		config         *Config
+		config         *PluginInput
 		token          string
 		required       bool
 		mockVerify     func(ctx context.Context, token, audience string) (*idtoken.Payload, error)
@@ -38,7 +38,7 @@ func TestAuth_ServeHTTP(t *testing.T) {
 	}{
 		{
 			name: "valid token",
-			config: &Config{
+			config: &PluginInput{
 				HeaderName: "X-Auth-Token",
 				Provider:   "google",
 				Audience:   "gateway-audience",
@@ -52,7 +52,7 @@ func TestAuth_ServeHTTP(t *testing.T) {
 		},
 		{
 			name: "valid token with bearer prefix",
-			config: &Config{
+			config: &PluginInput{
 				HeaderName: "Authorization",
 				Provider:   "google",
 				Audience:   "gateway-audience",
@@ -67,7 +67,7 @@ func TestAuth_ServeHTTP(t *testing.T) {
 		},
 		{
 			name: "missing token",
-			config: &Config{
+			config: &PluginInput{
 				HeaderName: "X-Auth-Token",
 				Provider:   "google",
 				Audience:   "gateway-audience",
@@ -81,7 +81,7 @@ func TestAuth_ServeHTTP(t *testing.T) {
 		},
 		{
 			name: "invalid token",
-			config: &Config{
+			config: &PluginInput{
 				HeaderName: "X-Auth-Token",
 				Provider:   "google",
 				Audience:   "gateway-audience",
@@ -95,7 +95,7 @@ func TestAuth_ServeHTTP(t *testing.T) {
 		},
 		{
 			name: "missing token but not required",
-			config: &Config{
+			config: &PluginInput{
 				HeaderName: "X-Auth-Token",
 				Provider:   "google",
 				Audience:   "gateway-audience",
@@ -109,7 +109,7 @@ func TestAuth_ServeHTTP(t *testing.T) {
 		},
 		{
 			name: "invalid token but not required",
-			config: &Config{
+			config: &PluginInput{
 				HeaderName: "X-Auth-Token",
 				Provider:   "google",
 				Audience:   "gateway-audience",
@@ -130,9 +130,13 @@ func TestAuth_ServeHTTP(t *testing.T) {
 			})
 			subject, err := NewAuthPlugin(context.Background(), next, tt.config, "test")
 			if err != nil {
+				// We expect NewAuthPlugin to succeed for "google" provider if it doesn't do deep init checks that fail
+				// If it fails, we might need to mock TokenValidatorFactory or use a noop provider?
+				// Since we are moving code, we assume it behaves same as existing main_test.go
 				t.Fatal(err)
 			}
 
+			// Inject mock validator
 			subject.validator = &MockValidator{VerifyFunc: tt.mockVerify}
 
 			recorder := httptest.NewRecorder()
@@ -156,12 +160,12 @@ func TestNew(t *testing.T) {
 
 	tests := []struct {
 		name        string
-		config      *Config
+		config      *PluginInput
 		expectError bool
 	}{
 		{
 			name: "google provider",
-			config: &Config{
+			config: &PluginInput{
 				HeaderName: "Authorization",
 				Provider:   "google",
 				Audience:   "gateway-audience",
@@ -170,7 +174,7 @@ func TestNew(t *testing.T) {
 		},
 		{
 			name: "Audience is missing",
-			config: &Config{
+			config: &PluginInput{
 				HeaderName: "Authorization",
 				Provider:   "google",
 			},
@@ -178,7 +182,7 @@ func TestNew(t *testing.T) {
 		},
 		{
 			name: "unknown provider",
-			config: &Config{
+			config: &PluginInput{
 				HeaderName: "Authorization",
 				Provider:   "unknown",
 				Audience:   "gateway-audience",
@@ -189,7 +193,7 @@ func TestNew(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			handler, err := New(ctx, next, tt.config, "test")
+			handler, err := NewAuthPlugin(ctx, next, tt.config, "test")
 			if tt.expectError {
 				assert.Error(t, err)
 				assert.Nil(t, handler)
@@ -209,14 +213,14 @@ func TestNewAuthPlugin(t *testing.T) {
 
 	tests := []struct {
 		name                      string
-		config                    *Config
+		config                    *PluginInput
 		expectedForwardHeaderName string
 		expectedRequired          bool
 		expectError               bool
 	}{
 		{
 			name: "google provider should use default values",
-			config: &Config{
+			config: &PluginInput{
 				HeaderName: "Authorization",
 				Provider:   "google",
 				Audience:   "gateway-audience",
@@ -227,7 +231,7 @@ func TestNewAuthPlugin(t *testing.T) {
 		},
 		{
 			name: "google provider should assign forward header name and required",
-			config: &Config{
+			config: &PluginInput{
 				HeaderName:        "Authorization",
 				Provider:          "google",
 				Audience:          "gateway-audience",
@@ -240,7 +244,7 @@ func TestNewAuthPlugin(t *testing.T) {
 		},
 		{
 			name: "Audience is missing",
-			config: &Config{
+			config: &PluginInput{
 				HeaderName: "Authorization",
 				Provider:   "google",
 			},
@@ -248,7 +252,7 @@ func TestNewAuthPlugin(t *testing.T) {
 		},
 		{
 			name: "unknown provider",
-			config: &Config{
+			config: &PluginInput{
 				HeaderName: "Authorization",
 				Provider:   "unknown",
 				Audience:   "gateway-audience",
