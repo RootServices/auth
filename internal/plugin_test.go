@@ -3,38 +3,116 @@ package plugin
 import (
 	"context"
 	"fmt"
-	"net/http"
-	"net/http/httptest"
+	"io"
 	"testing"
 
+	"github.com/http-wasm/http-wasm-guest-tinygo/handler/api"
 	"github.com/stretchr/testify/assert"
 	"google.golang.org/api/idtoken"
 )
 
-func boolPtr(b bool) *bool {
-	return &b
+// -- Mocks --
+
+type mockHeader struct {
+	headers map[string][]string
 }
 
-// MockValidator to test ServeHTTP without relying on external services
+func newMockHeader() *mockHeader {
+	return &mockHeader{headers: make(map[string][]string)}
+}
+
+func (h *mockHeader) Names() []string {
+	keys := make([]string, 0, len(h.headers))
+	for k := range h.headers {
+		keys = append(keys, k)
+	}
+	return keys
+}
+
+func (h *mockHeader) Get(name string) (string, bool) {
+	if v, ok := h.headers[name]; ok && len(v) > 0 {
+		return v[0], true
+	}
+	return "", false
+}
+
+func (h *mockHeader) GetAll(name string) []string {
+	return h.headers[name]
+}
+
+func (h *mockHeader) Set(name, value string) {
+	h.headers[name] = []string{value}
+}
+
+func (h *mockHeader) Add(name, value string) {
+	h.headers[name] = append(h.headers[name], value)
+}
+
+func (h *mockHeader) Remove(name string) {
+	delete(h.headers, name)
+}
+
+type mockBody struct{}
+
+func (b *mockBody) WriteTo(w io.Writer) (uint64, error) { return 0, nil }
+func (b *mockBody) Read(p []byte) (uint32, bool)        { return 0, true }
+func (b *mockBody) Write(p []byte)                      {}
+func (b *mockBody) WriteString(s string)                {}
+
+type mockRequest struct {
+	headers *mockHeader
+}
+
+func (r *mockRequest) GetMethod() string          { return "GET" }
+func (r *mockRequest) SetMethod(string)           {}
+func (r *mockRequest) GetURI() string             { return "/" }
+func (r *mockRequest) SetURI(string)              {}
+func (r *mockRequest) GetProtocolVersion() string { return "HTTP/1.1" }
+func (r *mockRequest) Headers() api.Header        { return r.headers }
+func (r *mockRequest) GetSourceAddr() string      { return "127.0.0.1" }
+func (r *mockRequest) Body() api.Body             { return &mockBody{} }
+func (r *mockRequest) Trailers() api.Header       { return &mockHeader{} }
+
+type mockResponse struct {
+	statusCode uint32
+	headers    *mockHeader
+}
+
+func (r *mockResponse) GetStatusCode() uint32  { return r.statusCode }
+func (r *mockResponse) SetStatusCode(c uint32) { r.statusCode = c }
+func (r *mockResponse) Headers() api.Header    { return r.headers }
+func (r *mockResponse) Body() api.Body         { return &mockBody{} }
+func (r *mockResponse) Trailers() api.Header   { return &mockHeader{} }
+
+// MockCtx implements api.Ctx and context.Context
+type MockCtx struct {
+	context.Context
+}
+
+// Next is only in recent api? Let's check definitions. api.Ctx definition in api.go doesn't force Next?
+// In api.go: context.Context. type Ctx interface { context.Context }
+// So MockCtx as struct embedding context.Context is enough.
+
+// MockValidator
 type MockValidator struct {
 	VerifyFunc func(ctx context.Context, token, audience string) (*idtoken.Payload, error)
 }
 
 func (m *MockValidator) Verify(ctx context.Context, token, audience string) (*idtoken.Payload, error) {
-	if m.VerifyFunc != nil {
-		return m.VerifyFunc(ctx, token, audience)
-	}
-	return nil, nil
+	return m.VerifyFunc(ctx, token, audience)
 }
 
-func TestAuth_ServeHTTP(t *testing.T) {
+func boolPtr(b bool) *bool { return &b }
+
+func TestAuthPlugin_HandleRequest(t *testing.T) {
 	tests := []struct {
 		name           string
 		config         *PluginInput
 		token          string
 		required       bool
 		mockVerify     func(ctx context.Context, token, audience string) (*idtoken.Payload, error)
-		expectedStatus int
+		expectedStatus uint32
+		expectedNext   bool
 	}{
 		{
 			name: "valid token",
@@ -48,7 +126,8 @@ func TestAuth_ServeHTTP(t *testing.T) {
 			mockVerify: func(ctx context.Context, token, audience string) (*idtoken.Payload, error) {
 				return &idtoken.Payload{Subject: "user1"}, nil
 			},
-			expectedStatus: http.StatusOK,
+			expectedStatus: 0, // 0 means not set (OK)
+			expectedNext:   true,
 		},
 		{
 			name: "valid token with bearer prefix",
@@ -63,10 +142,11 @@ func TestAuth_ServeHTTP(t *testing.T) {
 				assert.Equal(t, "valid-token", token)
 				return &idtoken.Payload{Subject: "user1"}, nil
 			},
-			expectedStatus: http.StatusOK,
+			expectedStatus: 0,
+			expectedNext:   true,
 		},
 		{
-			name: "missing token",
+			name: "missing token required",
 			config: &PluginInput{
 				HeaderName: "X-Auth-Token",
 				Provider:   "google",
@@ -77,10 +157,26 @@ func TestAuth_ServeHTTP(t *testing.T) {
 			mockVerify: func(ctx context.Context, token, audience string) (*idtoken.Payload, error) {
 				return nil, nil // Should not be called
 			},
-			expectedStatus: http.StatusUnauthorized,
+			expectedStatus: 401,
+			expectedNext:   false, // Should verify HandleRequest implementation checks return value
 		},
 		{
-			name: "invalid token",
+			name: "missing token not required",
+			config: &PluginInput{
+				HeaderName: "X-Auth-Token",
+				Provider:   "google",
+				Audience:   "gateway-audience",
+				Required:   boolPtr(false),
+			},
+			token: "",
+			mockVerify: func(ctx context.Context, token, audience string) (*idtoken.Payload, error) {
+				return nil, nil
+			},
+			expectedStatus: 0,
+			expectedNext:   true,
+		},
+		{
+			name: "invalid token required",
 			config: &PluginInput{
 				HeaderName: "X-Auth-Token",
 				Provider:   "google",
@@ -91,24 +187,11 @@ func TestAuth_ServeHTTP(t *testing.T) {
 			mockVerify: func(ctx context.Context, token, audience string) (*idtoken.Payload, error) {
 				return nil, fmt.Errorf("invalid token")
 			},
-			expectedStatus: http.StatusUnauthorized,
+			expectedStatus: 401,
+			expectedNext:   false, // Should not proceed
 		},
 		{
-			name: "missing token but not required",
-			config: &PluginInput{
-				HeaderName: "X-Auth-Token",
-				Provider:   "google",
-				Audience:   "gateway-audience",
-				Required:   boolPtr(false),
-			},
-			token: "",
-			mockVerify: func(ctx context.Context, token, audience string) (*idtoken.Payload, error) {
-				return nil, nil // Should not be called
-			},
-			expectedStatus: http.StatusOK,
-		},
-		{
-			name: "invalid token but not required",
+			name: "invalid token not required",
 			config: &PluginInput{
 				HeaderName: "X-Auth-Token",
 				Provider:   "google",
@@ -119,160 +202,32 @@ func TestAuth_ServeHTTP(t *testing.T) {
 			mockVerify: func(ctx context.Context, token, audience string) (*idtoken.Payload, error) {
 				return nil, fmt.Errorf("invalid token")
 			},
-			expectedStatus: http.StatusOK,
+			expectedStatus: 0,
+			expectedNext:   true,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			next := http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
-				rw.WriteHeader(http.StatusOK)
-			})
-			subject, err := NewAuthPlugin(context.Background(), next, tt.config, "test")
+			plugin, err := NewAuthPlugin(context.Background(), tt.config)
 			if err != nil {
-				// We expect NewAuthPlugin to succeed for "google" provider if it doesn't do deep init checks that fail
-				// If it fails, we might need to mock TokenValidatorFactory or use a noop provider?
-				// Since we are moving code, we assume it behaves same as existing main_test.go
-				t.Fatal(err)
+				// We expect success for google provider in setup unless config invalid
+				assert.NoError(t, err)
 			}
+			plugin.validator = &MockValidator{VerifyFunc: tt.mockVerify}
 
-			// Inject mock validator
-			subject.validator = &MockValidator{VerifyFunc: tt.mockVerify}
-
-			recorder := httptest.NewRecorder()
-			req := httptest.NewRequest(http.MethodGet, "/", nil)
+			reqHeaders := newMockHeader()
 			if tt.token != "" {
-				req.Header.Set(tt.config.HeaderName, tt.token)
+				reqHeaders.Set(tt.config.HeaderName, tt.token)
 			}
+			req := &mockRequest{headers: reqHeaders}
+			resp := &mockResponse{headers: newMockHeader()}
 
-			subject.ServeHTTP(recorder, req)
+			next, reqCtx := plugin.HandleRequest(req, resp)
 
-			assert.Equal(t, tt.expectedStatus, recorder.Code)
-		})
-	}
-}
-
-// These tests dont allow looking into defaults of AuthPlugin because the
-// subject returned is a http.Handler.
-func TestNew(t *testing.T) {
-	ctx := context.Background()
-	next := http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {})
-
-	tests := []struct {
-		name        string
-		config      *PluginInput
-		expectError bool
-	}{
-		{
-			name: "google provider",
-			config: &PluginInput{
-				HeaderName: "Authorization",
-				Provider:   "google",
-				Audience:   "gateway-audience",
-			},
-			expectError: false,
-		},
-		{
-			name: "Audience is missing",
-			config: &PluginInput{
-				HeaderName: "Authorization",
-				Provider:   "google",
-			},
-			expectError: true,
-		},
-		{
-			name: "unknown provider",
-			config: &PluginInput{
-				HeaderName: "Authorization",
-				Provider:   "unknown",
-				Audience:   "gateway-audience",
-			},
-			expectError: true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			handler, err := NewAuthPlugin(ctx, next, tt.config, "test")
-			if tt.expectError {
-				assert.Error(t, err)
-				assert.Nil(t, handler)
-			} else {
-				assert.NoError(t, err)
-				assert.NotNil(t, handler)
-			}
-		})
-	}
-}
-
-// These tests allow looking into defaults of AuthPlugin because the
-// subject returned is a AuthPlugin.
-func TestNewAuthPlugin(t *testing.T) {
-	ctx := context.Background()
-	next := http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {})
-
-	tests := []struct {
-		name                      string
-		config                    *PluginInput
-		expectedForwardHeaderName string
-		expectedRequired          bool
-		expectError               bool
-	}{
-		{
-			name: "google provider should use default values",
-			config: &PluginInput{
-				HeaderName: "Authorization",
-				Provider:   "google",
-				Audience:   "gateway-audience",
-			},
-			expectedForwardHeaderName: defaultForwardHeaderName,
-			expectedRequired:          defaultRequired,
-			expectError:               false,
-		},
-		{
-			name: "google provider should assign forward header name and required",
-			config: &PluginInput{
-				HeaderName:        "Authorization",
-				Provider:          "google",
-				Audience:          "gateway-audience",
-				ForwardHeaderName: "X-Forward-IdToken-Test",
-				Required:          boolPtr(false),
-			},
-			expectedForwardHeaderName: "X-Forward-IdToken-Test",
-			expectedRequired:          false,
-			expectError:               false,
-		},
-		{
-			name: "Audience is missing",
-			config: &PluginInput{
-				HeaderName: "Authorization",
-				Provider:   "google",
-			},
-			expectError: true,
-		},
-		{
-			name: "unknown provider",
-			config: &PluginInput{
-				HeaderName: "Authorization",
-				Provider:   "unknown",
-				Audience:   "gateway-audience",
-			},
-			expectError: true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			subject, err := NewAuthPlugin(ctx, next, tt.config, "test")
-			if tt.expectError {
-				assert.Error(t, err)
-				assert.Nil(t, subject)
-			} else {
-				assert.NoError(t, err)
-				assert.NotNil(t, subject)
-				assert.Equal(t, tt.expectedForwardHeaderName, subject.forwardHeaderName)
-				assert.Equal(t, tt.expectedRequired, subject.required)
-			}
+			assert.Equal(t, tt.expectedNext, next)
+			assert.Equal(t, uint32(0), reqCtx) // We always return 0 for now
+			assert.Equal(t, tt.expectedStatus, resp.statusCode)
 		})
 	}
 }

@@ -1,44 +1,44 @@
-package auth
+package main
 
 import (
 	"context"
-	"net/http"
+	"encoding/json"
+	"fmt"
+	"os"
 
+	"github.com/http-wasm/http-wasm-guest-tinygo/handler"
+	"github.com/http-wasm/http-wasm-guest-tinygo/handler/api"
 	plugin "github.com/rootservices/auth/internal"
 )
 
-func boolPtr(b bool) *bool {
-	return &b
-}
-
-// Config the plugin configuration.
-// Required by Traefik
 type Config struct {
-	HeaderName        string `json:"headerName,omitempty"`
-	Provider          string `json:"provider,omitempty"` // google, firebase
-	Audience          string `json:"audience,omitempty"`
-	ForwardHeaderName string `json:"forwardHeaderName,omitempty"`
-	Required          *bool  `json:"required,omitempty"`
+	headerName        string `json:"headerName,omitempty"`
+	provider          string `json:"provider,omitempty"` // google, firebase
+	audience          string `json:"audience,omitempty"`
+	forwardHeaderName string `json:"forwardHeaderName,omitempty"`
+	required          *bool  `json:"required,omitempty"`
 }
 
-// called by traefik
-func CreateConfig() *Config {
-	return &Config{
-		HeaderName:        "Authorization",
-		Provider:          "google",
-		Audience:          "audience-that-must-match",
-		ForwardHeaderName: "X-Forward-IdToken",
-		Required:          boolPtr(true),
+func init() {
+	var config Config
+	err := json.Unmarshal(handler.Host.GetConfig(), &config)
+	if err != nil {
+		handler.Host.Log(api.LogLevelError, fmt.Sprintf("Could not load config %v", err))
+		os.Exit(1)
 	}
-}
 
-func New(ctx context.Context, next http.Handler, config *Config, name string) (http.Handler, error) {
-	input := &plugin.PluginInput{
-		HeaderName:        config.HeaderName,
-		Provider:          config.Provider,
-		Audience:          config.Audience,
-		ForwardHeaderName: config.ForwardHeaderName,
-		Required:          config.Required,
+	input := plugin.PluginInput{
+		HeaderName:        config.headerName,
+		Provider:          config.provider,
+		Audience:          config.audience,
+		ForwardHeaderName: config.forwardHeaderName,
+		Required:          config.required,
 	}
-	return plugin.NewAuthPlugin(ctx, next, input, name)
+
+	plugin, err := plugin.NewAuthPlugin(context.Background(), &input)
+	if err != nil {
+		handler.Host.Log(api.LogLevelError, "failed to create auth plugin")
+		os.Exit(1)
+	}
+	handler.HandleRequestFn = plugin.HandleRequest
 }

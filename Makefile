@@ -2,9 +2,6 @@
 PROJECT_ID?="barncat"
 SHORT_SHA?=`git rev-parse --short HEAD`
 
-vendor:
-	go mod tidy && go mod vendor
-
 version:
 	mkdir -p internal/version
 	echo "{" > internal/version/version.json
@@ -16,13 +13,12 @@ test: version
 	go test -coverprofile=coverage.out ./...
 	go tool cover -func=coverage.out
 
+test-wasm: version
+	GOOS=js GOARCH=wasm go test -coverprofile=coverage.out ./...
+	go tool cover -func=coverage.out
+
 build: version
 	go build ./...
 
-test-yaegi: version
-	go install github.com/traefik/yaegi/cmd/yaegi@latest
-	mkdir -p .tmp/src/github.com/rootservices
-	ln -sf $(CURDIR) .tmp/src/github.com/rootservices/auth
-	@echo "Running yaegi test..."
-	@GOPATH=$(CURDIR)/.tmp yaegi test -v -unsafe -tags=yaegi github.com/rootservices/auth || (rm -rf .tmp; exit 1)
-	rm -rf .tmp
+build-wasm: version
+	GOOS=js GOARCH=wasm go build -o bin/main.wasm ./main.go
