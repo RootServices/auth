@@ -17,4 +17,4 @@ test: version
 	go tool cover -func=coverage.out
 
 build: version
-	go build -o gateway-auth main.go
+	go build ./...

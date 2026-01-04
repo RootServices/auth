@@ -8,11 +8,11 @@ Follows the Traefik plugin [docs](https://plugins.traefik.io/create) and example
 
 | Field             | Type   | Description                                                                 | Default |
 | ----------------- | ------ | --------------------------------------------------------------------------- | ------- |
-| `headerName`      | string | The name of the header to look for the token.                               | `""`    |
-| `provider`        | string | The authentication provider. Allowed values: `google`, `firebase`.          | `""`    |
-| `audience`        | string | The expected audience (aud) claim in the token.                             | `""`    |
-| `forwardHeaderName`| string | The header name to use when forwarding the validated token to the backend.  | `"X-Forward-IdToken"`    |
-| `required`        | bool   | If `true`, the request will be rejected if the token is missing or invalid. | `true` |
+| `HeaderName`      | string | The name of the header to look for the token.                               | `""`    |
+| `Provider`        | string | The authentication provider. Allowed values: `google`, `firebase`.          | `""`    |
+| `Audience`        | string | The expected audience (aud) claim in the token.                             | `""`    |
+| `ForwardHeaderName`| string | The header name to use when forwarding the validated token to the backend.  | `"X-Forward-IdToken"`    |
+| `Required`        | bool   | If `true`, the request will be rejected if the token is missing or invalid. | `true` |
 
 
 ## Contributing
