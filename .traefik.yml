@@ -8,3 +8,5 @@ testData:
   HeaderName: Test-Header
   Provider: google
   Audience: required-audience
+
+useUnsafe: true
