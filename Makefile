@@ -18,3 +18,11 @@ test: version
 
 build: version
 	go build ./...
+
+yaegi-test:
+	go install github.com/traefik/yaegi/cmd/yaegi@latest
+	mkdir -p .tmp/src/github.com/rootservices
+	ln -sf $(CURDIR) .tmp/src/github.com/rootservices/auth
+	@echo "Running yaegi test..."
+	@GOPATH=$(CURDIR)/.tmp yaegi test -v -unsafe -tags=yaegi github.com/rootservices/auth || (rm -rf .tmp; exit 1)
+	rm -rf .tmp

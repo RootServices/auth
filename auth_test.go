@@ -7,8 +7,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/stretchr/testify/assert"
-	"google.golang.org/api/idtoken"
+	"github.com/rootservices/auth/internal/validate"
 )
 
 func boolPtr(b bool) *bool {
@@ -17,10 +16,10 @@ func boolPtr(b bool) *bool {
 
 // MockValidator to test ServeHTTP without relying on external services
 type MockValidator struct {
-	VerifyFunc func(ctx context.Context, token, audience string) (*idtoken.Payload, error)
+	VerifyFunc func(ctx context.Context, token, audience string) (*validate.Claims, error)
 }
 
-func (m *MockValidator) Verify(ctx context.Context, token, audience string) (*idtoken.Payload, error) {
+func (m *MockValidator) Verify(ctx context.Context, token, audience string) (*validate.Claims, error) {
 	if m.VerifyFunc != nil {
 		return m.VerifyFunc(ctx, token, audience)
 	}
@@ -33,7 +32,7 @@ func TestAuth_ServeHTTP(t *testing.T) {
 		config         *Config
 		token          string
 		required       bool
-		mockVerify     func(ctx context.Context, token, audience string) (*idtoken.Payload, error)
+		mockVerify     func(ctx context.Context, token, audience string) (*validate.Claims, error)
 		expectedStatus int
 	}{
 		{
@@ -45,8 +44,8 @@ func TestAuth_ServeHTTP(t *testing.T) {
 				Required:   boolPtr(true),
 			},
 			token: "valid-token",
-			mockVerify: func(ctx context.Context, token, audience string) (*idtoken.Payload, error) {
-				return &idtoken.Payload{Subject: "user1"}, nil
+			mockVerify: func(ctx context.Context, token, audience string) (*validate.Claims, error) {
+				return &validate.Claims{Subject: "user1"}, nil
 			},
 			expectedStatus: http.StatusOK,
 		},
@@ -59,9 +58,11 @@ func TestAuth_ServeHTTP(t *testing.T) {
 				Required:   boolPtr(true),
 			},
 			token: "Bearer valid-token",
-			mockVerify: func(ctx context.Context, token, audience string) (*idtoken.Payload, error) {
-				assert.Equal(t, "valid-token", token)
-				return &idtoken.Payload{Subject: "user1"}, nil
+			mockVerify: func(ctx context.Context, token, audience string) (*validate.Claims, error) {
+				if token != "valid-token" {
+					t.Errorf("expected token %q, got %q", "valid-token", token)
+				}
+				return &validate.Claims{Subject: "user1"}, nil
 			},
 			expectedStatus: http.StatusOK,
 		},
@@ -74,7 +75,7 @@ func TestAuth_ServeHTTP(t *testing.T) {
 				Required:   boolPtr(true),
 			},
 			token: "",
-			mockVerify: func(ctx context.Context, token, audience string) (*idtoken.Payload, error) {
+			mockVerify: func(ctx context.Context, token, audience string) (*validate.Claims, error) {
 				return nil, nil // Should not be called
 			},
 			expectedStatus: http.StatusUnauthorized,
@@ -88,7 +89,7 @@ func TestAuth_ServeHTTP(t *testing.T) {
 				Required:   boolPtr(true),
 			},
 			token: "invalid-token",
-			mockVerify: func(ctx context.Context, token, audience string) (*idtoken.Payload, error) {
+			mockVerify: func(ctx context.Context, token, audience string) (*validate.Claims, error) {
 				return nil, fmt.Errorf("invalid token")
 			},
 			expectedStatus: http.StatusUnauthorized,
@@ -102,7 +103,7 @@ func TestAuth_ServeHTTP(t *testing.T) {
 				Required:   boolPtr(false),
 			},
 			token: "",
-			mockVerify: func(ctx context.Context, token, audience string) (*idtoken.Payload, error) {
+			mockVerify: func(ctx context.Context, token, audience string) (*validate.Claims, error) {
 				return nil, nil // Should not be called
 			},
 			expectedStatus: http.StatusOK,
@@ -116,7 +117,7 @@ func TestAuth_ServeHTTP(t *testing.T) {
 				Required:   boolPtr(false),
 			},
 			token: "invalid-token",
-			mockVerify: func(ctx context.Context, token, audience string) (*idtoken.Payload, error) {
+			mockVerify: func(ctx context.Context, token, audience string) (*validate.Claims, error) {
 				return nil, fmt.Errorf("invalid token")
 			},
 			expectedStatus: http.StatusOK,
@@ -143,7 +144,9 @@ func TestAuth_ServeHTTP(t *testing.T) {
 
 			subject.ServeHTTP(recorder, req)
 
-			assert.Equal(t, tt.expectedStatus, recorder.Code)
+			if recorder.Code != tt.expectedStatus {
+				t.Errorf("expected status %d, got %d", tt.expectedStatus, recorder.Code)
+			}
 		})
 	}
 }
@@ -191,11 +194,19 @@ func TestNew(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			handler, err := New(ctx, next, tt.config, "test")
 			if tt.expectError {
-				assert.Error(t, err)
-				assert.Nil(t, handler)
+				if err == nil {
+					t.Error("expected error")
+				}
+				if handler != nil {
+					t.Errorf("expected handler to be nil, got %v", handler)
+				}
 			} else {
-				assert.NoError(t, err)
-				assert.NotNil(t, handler)
+				if err != nil {
+					t.Errorf("expected no error, got %v", err)
+				}
+				if handler == nil {
+					t.Error("expected handler to be not nil")
+				}
 			}
 		})
 	}
@@ -261,13 +272,26 @@ func TestNewAuthPlugin(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			subject, err := NewAuthPlugin(ctx, next, tt.config, "test")
 			if tt.expectError {
-				assert.Error(t, err)
-				assert.Nil(t, subject)
+				if err == nil {
+					t.Error("expected error")
+				}
+				if subject != nil {
+					t.Errorf("expected subject to be nil, got %v", subject)
+				}
 			} else {
-				assert.NoError(t, err)
-				assert.NotNil(t, subject)
-				assert.Equal(t, tt.expectedForwardHeaderName, subject.forwardHeaderName)
-				assert.Equal(t, tt.expectedRequired, subject.required)
+				if err != nil {
+					t.Errorf("expected no error, got %v", err)
+				}
+				if subject == nil {
+					t.Error("expected subject to be not nil")
+				} else {
+					if tt.expectedForwardHeaderName != subject.forwardHeaderName {
+						t.Errorf("expected forwardHeaderName %q, got %q", tt.expectedForwardHeaderName, subject.forwardHeaderName)
+					}
+					if tt.expectedRequired != subject.required {
+						t.Errorf("expected required %v, got %v", tt.expectedRequired, subject.required)
+					}
+				}
 			}
 		})
 	}

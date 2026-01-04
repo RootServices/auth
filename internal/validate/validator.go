@@ -2,11 +2,14 @@ package validate
 
 import (
 	"context"
-
-	"google.golang.org/api/idtoken"
 )
+
+// Claims represents the data associated with a token.
+type Claims struct {
+	Subject string `json:"sub"`
+}
 
 // TokenValidator verifies ID tokens.
 type TokenValidator interface {
-	Verify(ctx context.Context, token, audience string) (*idtoken.Payload, error)
+	Verify(ctx context.Context, token, audience string) (*Claims, error)
 }
