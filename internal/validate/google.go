@@ -1,6 +1,3 @@
-//go:build !yaegi
-// +build !yaegi
-
 package validate
 
 import (
@@ -27,10 +24,10 @@ func NewGoogleTokenValidator(logger *logger.Log) *GoogleTokenValidator {
 }
 
 // Verify validates the given ID token.
-func (validator *GoogleTokenValidator) Verify(ctx context.Context, token, audience string) (*Claims, error) {
+func (validator *GoogleTokenValidator) Verify(ctx context.Context, token, audience string) (*idtoken.Payload, error) {
 	payload, err := validator.validatorFunc(ctx, token, audience)
 	if err != nil {
 		return nil, fmt.Errorf("failed to validate token: %w", err)
 	}
-	return &Claims{Subject: payload.Subject}, nil
+	return payload, nil
 }

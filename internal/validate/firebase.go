@@ -1,6 +1,3 @@
-//go:build !yaegi
-// +build !yaegi
-
 package validate
 
 import (
@@ -10,6 +7,7 @@ import (
 	firebase "firebase.google.com/go/v4"
 	"firebase.google.com/go/v4/auth"
 	"github.com/rootservices/auth/internal/logger"
+	"google.golang.org/api/idtoken"
 )
 
 // FirebaseAuthClient defines the interface for verifying ID tokens.
@@ -46,16 +44,25 @@ func NewFireBaseAuthClient(ctx context.Context) (FirebaseAuthClient, error) {
 }
 
 // Verify validates the given ID token and checks for revocation.
-func (validator *FirebaseTokenValidator) Verify(ctx context.Context, token, audience string) (*Claims, error) {
+func (validator *FirebaseTokenValidator) Verify(ctx context.Context, token, audience string) (*idtoken.Payload, error) {
 
 	authToken, err := validator.client.VerifyIDTokenAndCheckRevoked(ctx, token)
 	if err != nil {
 		return nil, fmt.Errorf("failed to verify token: %w", err)
 	}
 
+	payload := &idtoken.Payload{
+		Issuer:   authToken.Issuer,
+		Audience: authToken.Audience,
+		Expires:  authToken.Expires,
+		IssuedAt: authToken.IssuedAt,
+		Subject:  authToken.Subject,
+		Claims:   authToken.Claims,
+	}
+
 	if authToken.Audience != audience {
 		return nil, fmt.Errorf("audience mismatch: expected %q, got %q", audience, authToken.Audience)
 	}
 
-	return &Claims{Subject: authToken.Subject}, nil
+	return payload, nil
 }
