@@ -36,7 +36,11 @@ type AuthPlugin struct {
 }
 
 func New(ctx context.Context, next http.Handler, config *Config, name string) (http.Handler, error) {
-	return NewAuthPlugin(ctx, next, config, name)
+	plugin, err := NewAuthPlugin(ctx, next, config, name)
+	if err != nil {
+		return nil, err
+	}
+	return plugin, nil
 }
 
 // New created a new Auth plugin.
