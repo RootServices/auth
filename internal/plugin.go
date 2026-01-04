@@ -3,9 +3,9 @@ package plugin
 import (
 	"context"
 	"fmt"
-	"net/http"
 	"strings"
 
+	"github.com/http-wasm/http-wasm-guest-tinygo/handler/api"
 	"github.com/rootservices/auth/internal/logger"
 	"github.com/rootservices/auth/internal/validate"
 )
@@ -16,17 +16,15 @@ const (
 )
 
 type PluginInput struct {
-	HeaderName        string
-	Provider          string
-	Audience          string
-	ForwardHeaderName string
-	Required          *bool
+	HeaderName        string `json:"headerName,omitempty"`
+	Provider          string `json:"provider,omitempty"` // google, firebase
+	Audience          string `json:"audience,omitempty"`
+	ForwardHeaderName string `json:"forwardHeaderName,omitempty"`
+	Required          *bool  `json:"required,omitempty"`
 }
 
 type AuthPlugin struct {
-	next              http.Handler
 	headerName        string
-	name              string
 	validator         validate.TokenValidator
 	audience          string
 	forwardHeaderName string
@@ -35,7 +33,7 @@ type AuthPlugin struct {
 }
 
 // NewAuthPlugin created a new Auth plugin.
-func NewAuthPlugin(ctx context.Context, next http.Handler, config *PluginInput, name string) (*AuthPlugin, error) {
+func NewAuthPlugin(ctx context.Context, config *PluginInput) (*AuthPlugin, error) {
 	logger := logger.New("INFO", "")
 
 	if config.Audience == "" {
@@ -60,8 +58,6 @@ func NewAuthPlugin(ctx context.Context, next http.Handler, config *PluginInput, 
 
 	return &AuthPlugin{
 		headerName:        config.HeaderName,
-		next:              next,
-		name:              name,
 		validator:         validator,
 		audience:          config.Audience,
 		forwardHeaderName: forwardHeaderName,
@@ -70,32 +66,34 @@ func NewAuthPlugin(ctx context.Context, next http.Handler, config *PluginInput, 
 	}, nil
 }
 
-func (auth *AuthPlugin) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
-	token := req.Header.Get(auth.headerName)
-	if token == "" && auth.required {
+func (auth *AuthPlugin) HandleRequest(req api.Request, resp api.Response) (bool, uint32) {
+	token, ok := req.Headers().Get(auth.headerName)
+	if (!ok || token == "") && auth.required {
 		auth.logger.Error("token is required")
-		http.Error(rw, "Unauthorized", http.StatusUnauthorized)
-		return
-	} else if token == "" && !auth.required {
+		resp.SetStatusCode(401)
+		resp.Body().WriteString("Unauthorized")
+		return false, 0
+	} else if (!ok || token == "") && !auth.required {
 		auth.logger.Debug("token is empty but not required")
-		auth.next.ServeHTTP(rw, req)
-		return
+		return true, 0
 	}
 
 	// Remove Bearer prefix if present
 	token = strings.TrimPrefix(token, "Bearer ")
 	token = strings.TrimSpace(token)
 
-	_, err := auth.validator.Verify(req.Context(), token, auth.audience)
+	// Use context.Background() as api.Request does not provide a context in this version.
+	_, err := auth.validator.Verify(context.Background(), token, auth.audience)
 	if err != nil && auth.required {
-		http.Error(rw, "Unauthorized", http.StatusUnauthorized)
-		return
+		auth.logger.Error(fmt.Sprintf("token verification failed: %v", err))
+		resp.SetStatusCode(401)
+		resp.Body().WriteString("Unauthorized")
+		return false, 0
 	} else if err != nil && !auth.required {
 		auth.logger.Debug("token is invalid but not required")
-		auth.next.ServeHTTP(rw, req)
-		return
+		return true, 0
 	}
 
-	req.Header.Set(auth.forwardHeaderName, token)
-	auth.next.ServeHTTP(rw, req)
+	req.Headers().Set(auth.forwardHeaderName, token)
+	return true, 0
 }
